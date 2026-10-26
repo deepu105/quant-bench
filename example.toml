@@ -1,0 +1,56 @@
+# quant-bench config: every [engines.*] runs every [models.*] (restrict with `models = [...]`).
+# Placeholders in `cmd`, `stop_cmd` and `env`: {port} {host} {ctx} {served_name} {engine} {model},
+# plus every key of the model table ({path}, {draft}, ...). A combination whose cmd needs a key
+# the model lacks is skipped.
+
+results = "results"            # relative to this file
+data = "~/.cache/quant-bench"  # where `prep` put the problems
+runs = 3                       # each set runs this many times per combination (seed 1000 + run)
+sets = ["speed", "math", "lcb"]  # add "agent" for the coding-agent set (needs `prep --agent`)
+port = 8090
+ctx = 65536
+served_name = "bench"          # model name sent in requests; the server must answer to it
+max_tokens = 60000             # math and lcb output cap (thinking + answer)
+sampling = { temperature = 1.0, top_p = 0.95, top_k = 20 }  # Qwen3.x thinking-mode card values
+ready_timeout_s = 1800
+min_mem_gib = 4                # stop the server if MemAvailable stays under this for 3 s (Linux)
+# tokenizer = "/path/to/tokenizer.json"  # only for servers without /tokenize; needs `pip install tokenizers`
+
+[speed]
+prompt_tokens = 32000          # approximate; the summary shows the real count
+followups = 2
+max_tokens = 16384
+
+# [math]
+# extra_body = { reasoning_budget_tokens = 51000 }  # per-request fields, e.g. a thinking cap
+
+# [agent]
+# tasks = ["rust/poker", "go/connect"]
+# timeout_s = 1800
+# cmd = "pi -p --provider bench --model {served_name} --offline --tools read,bash,edit,write --session-dir {work}/session {prompt}"
+
+[engines.llama]
+cmd = """llama-server -m {path} --alias {served_name} --host {host} --port {port} -c {ctx}
+         -ngl 99 -fa on --jinja --reasoning-format deepseek --parallel 1"""
+# env = { HIP_VISIBLE_DEVICES = "0" }
+# extra_body = {}              # merged into every request to this engine
+
+# Same engine with an MTP draft head; runs only the models that have a `draft` key.
+# [engines.llama-mtp]
+# cmd = """llama-server -m {path} --alias {served_name} --host {host} --port {port} -c {ctx}
+#          -ngl 99 -fa on --jinja --reasoning-format deepseek --parallel 1
+#          --spec-type draft-mtp --model-draft {draft} --spec-draft-n-max 5"""
+
+# Any OpenAI-compatible server works the same way:
+# [engines.strata]
+# cmd = "strata serve --model {path} --port {port} --context {ctx}"
+# [engines.halogen]                # docker: give it a name and a stop_cmd
+# cmd = "docker run --rm --name qb-halogen --network host ... -e HALOGEN_CHECKPOINT={path} ..."
+# stop_cmd = "docker stop -t 60 qb-halogen"
+
+[models.swift-iq3_xxs]
+path = "/models/Swift-1.5-Qwen3.8-Flash-Next-IQ3_XXS-00001-of-00003.gguf"
+
+[models.unsloth-iq4_xs]
+path = "/models/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf"
+# draft = "/models/mtp-Q8_0.gguf"
